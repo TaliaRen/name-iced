@@ -161,11 +161,11 @@
     </div>
   </div>
   <script>
-    // The tips card comes up before the 3D scene has downloaded, as soon as the
-    // title's font is in (at most 3 s), so the title never shows in a stand-in
-    // font first. It can already be closed (main.js takes over once loaded).
+    // Start loading the tips card's title font right away. main.js shows the
+    // card after the window has come up, once this font is in (at most 3 s),
+    // so the title never shows in a stand-in font first.
     (() => {
-      const hint = document.getElementById('hint'), ime = document.getElementById('ime');
+      const hint = document.getElementById('hint');
       const title = hint.querySelector('h1'), css = document.getElementById('title-font');
       const cssIn = new Promise(r => {
         if (css.media === 'all') r();
@@ -175,17 +175,9 @@
         const cs = getComputedStyle(title);
         return document.fonts.load(`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`, title.textContent);
       }).catch(() => {});
-      // main.js waits for this too, so its setup work doesn't hold the card back
-      window.hintReady = Promise.race([fontIn, new Promise(r => setTimeout(r, 3000))]).then(() =>
-        new Promise(r => requestAnimationFrame(() => { if (!hint.dataset.seen) hint.classList.add('show'); r(); })));
-      const close = () => {
-        if (window.iceReady || hint.dataset.seen) return;
-        hint.dataset.seen = '1';
-        hint.classList.remove('show');
-        ime.focus({ preventScroll: true });
-      };
-      hint.addEventListener('pointerdown', e => { if (!window.iceReady) { e.preventDefault(); close(); } });
-      addEventListener('keydown', close);
+      window.hintFont = Promise.race([fontIn, new Promise(r => setTimeout(r, 3000))]);
+      // Typing before the page is ready: no tips card after all
+      addEventListener('keydown', () => { hint.dataset.seen = '1'; }, { once: true });
     })();
   </script>
   <div id="tools-left">
