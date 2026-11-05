@@ -2815,7 +2815,8 @@ function focusInput() {
 }
 // -----------------------------------------------------------------------------
 // Gestures on the letters: tap one to shatter it, hold one to melt it.
-// Tapping empty space brings up the keyboard as before.
+// On a computer, clicking empty space focuses typing; on a phone, tapping
+// the glass never raises the keyboard (only the keyboard button does).
 // -----------------------------------------------------------------------------
 const HOLD_TIME = 0.3; // long enough not to be a tap, short enough to feel immediate
 const press = { id: null, x: 0, y: 0, c: null, t0: 0, tap: false };
@@ -2864,7 +2865,7 @@ glCanvas.addEventListener('pointerdown', e => {
   requestMotion();
   const c = charAt(e.clientX, e.clientY);
   Object.assign(press, { id: e.pointerId, x: e.clientX, y: e.clientY, c, t0: now(), tap: true, wiping: false, lx: e.clientX, ly: e.clientY, empty: !c });
-  if (!c && !IS_MOBILE) focusInput(); // on phones, wait: a drag wipes instead of raising the keyboard
+  if (!c && !IS_MOBILE) focusInput(); // on phones only the keyboard button raises the keyboard
 });
 addEventListener('pointermove', e => {
   if (e.pointerId !== press.id) return;
@@ -2886,7 +2887,6 @@ glCanvas.addEventListener('pointerup', e => {
   const c = press.c, t = now();
   const isTap = press.tap && t - press.t0 < HOLD_TIME;
   if (press.wiping) sfx.wipeEnd();
-  if (press.empty && !press.wiping && IS_MOBILE) focusInput(); // a plain tap on the glass
   press.id = null; press.c = null; press.tap = false;
   if (!isTap) { lastTap.t = -1; return; }
   if (lastTap.t > 0 && t - lastTap.t < DOUBLE_TAP && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DOUBLE_DIST) {
@@ -3280,9 +3280,9 @@ if (hintEl) {
     hintEl.dataset.seen = '1'; // also cancels the opening if it's still waiting for the font
     if (!shown()) return;
     hintEl.classList.remove('show');
-    // The first close starts the session: ready to type (and, on a phone,
-    // the tap brings up the keyboard). Later closes leave the keyboard alone.
-    if (firstClose) { firstClose = false; focusInput(); }
+    // The first close starts the session: ready to type on a computer. On a
+    // phone the keyboard stays down until the keyboard button is tapped.
+    if (firstClose) { firstClose = false; if (!IS_MOBILE) focusInput(); }
   };
   // The window comes up first; the card fades in just after, once its title
   // font is in (index.html starts loading it), unless typing has begun
