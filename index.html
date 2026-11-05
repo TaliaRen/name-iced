@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Iced Letters</title>
+<meta name="theme-color" content="#060c1c">
+<!-- The serif the Latin ice letters are cut from, for the opening hint's title -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/gilda-display@5.3.0/400.css">
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #060c1c;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation; /* no double-tap zoom */
+  }
+  #gl { position: fixed; inset: 0; display: block; touch-action: none; }
+
+  /* Invisible text field that receives keystrokes (and opens the phone keyboard).
+     A textarea, so Enter can put in a line break */
+  #ime {
+    position: fixed; left: 50%; bottom: 0;
+    width: 1px; height: 1px; padding: 0; border: 0;
+    opacity: 0; font-size: 16px; /* >=16px: no zoom on iOS */
+    background: transparent; color: transparent; caret-color: transparent;
+    resize: none; overflow: hidden;
+  }
+
+  /* Export: one small frosted-ice round button, bottom right */
+  #tools, #tools-left {
+    position: fixed;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    display: flex; gap: 8px;
+  }
+  #tools { right: calc(16px + env(safe-area-inset-right)); }
+  #tools-left { left: calc(16px + env(safe-area-inset-left)); }
+  #tools button, #tools-left button {
+    width: 42px; height: 42px; padding: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(214, 234, 255, .2);
+    background:
+      linear-gradient(180deg, rgba(220, 238, 255, .12), rgba(150, 190, 235, .04)),
+      rgba(12, 22, 44, .28);
+    -webkit-backdrop-filter: blur(10px) saturate(1.3);
+    backdrop-filter: blur(10px) saturate(1.3);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 0 16px rgba(130, 185, 255, .08);
+    color: rgba(228, 241, 255, .72);
+    cursor: pointer;
+    transition: color .4s, box-shadow .4s, border-color .4s;
+  }
+  #tools button:hover, #tools-left button:hover {
+    color: #fff;
+    border-color: rgba(220, 238, 255, .4);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 0 18px rgba(150, 205, 255, .3);
+  }
+  #tools svg, #tools-left svg { display: block; width: 20px; height: 20px; margin: auto; overflow: visible; filter: drop-shadow(0 0 3px rgba(160, 210, 255, .5)); }
+
+  /* Opening hint: a pane of frosted ice over the window, gone at the first touch */
+  #hint {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    background: radial-gradient(ellipse at 50% 48%, rgba(6, 12, 28, .35), rgba(6, 12, 28, 0) 70%);
+    opacity: 0; pointer-events: none;
+    transition: opacity .9s ease;
+  }
+  #hint.show { opacity: 1; pointer-events: auto; }
+  #hint .card {
+    width: min(244px, 100%);
+    padding: 24px 22px 16px;
+    border-radius: 20px;
+    border: 1px solid rgba(214, 234, 255, .18);
+    background:
+      linear-gradient(180deg, rgba(220, 238, 255, .10), rgba(150, 190, 235, .03)),
+      rgba(10, 18, 38, .42);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    backdrop-filter: blur(14px) saturate(1.3);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 0 48px rgba(130, 185, 255, .08);
+    color: rgba(228, 241, 255, .82);
+    text-align: center;
+    transform: translateY(6px);
+    transition: transform .9s ease;
+  }
+  #hint.show .card { transform: none; }
+  #hint h1 {
+    margin: 0 0 14px;
+    font: 400 34px/1.2 "Gilda Display", Georgia, serif;
+    letter-spacing: .03em;
+    background: linear-gradient(180deg, #f6fbff 10%, #a9cdf2 95%);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 10px rgba(160, 205, 255, .35));
+  }
+  #hint .rule {
+    height: 1px; margin: 0 auto 14px; width: 70%;
+    background: linear-gradient(90deg, transparent, rgba(200, 225, 255, .35), transparent);
+  }
+  #hint ul { list-style: none; margin: 0; padding: 0; }
+  #hint li {
+    display: flex; justify-content: space-between; gap: 16px;
+    padding: 7px 4px;
+    font: 300 13.5px/1.3 -apple-system, "Helvetica Neue", "Segoe UI", sans-serif;
+    letter-spacing: .02em;
+  }
+  #hint li + li { border-top: 1px solid rgba(200, 225, 255, .07); }
+  #hint li b { font-weight: 400; color: rgba(214, 233, 255, .95); }
+  #hint li span { color: rgba(214, 233, 255, .55); }
+  /* On a computer screen the card is roomier: wider, with a little more air in each row */
+  @media (min-width: 768px) {
+    #hint .card { width: min(440px, 100%); box-sizing: border-box; padding: 32px 38px 22px; }
+    #hint h1 { font-size: 40px; margin-bottom: 18px; }
+    #hint .rule { margin-bottom: 16px; }
+    #hint li { font-size: 15px; padding: 9px 8px; }
+  }
+
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "opentype": "https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.module.js"
+  }
+}
+</script>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <textarea id="ime" rows="1" maxlength="40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="enter" aria-label="Type here"></textarea>
+  <div id="hint" role="dialog" aria-label="How to play">
+    <div class="card">
+      <h1>Iced Letters</h1>
+      <div class="rule"></div>
+      <ul>
+        <li><b>Type</b><span>Letters freeze</span></li>
+        <li><b>Delete</b><span>Melt</span></li>
+        <li><b>Tap a letter</b><span>Shatter</span></li>
+        <li><b>Double-tap</b><span>Shatter all</span></li>
+        <li><b>Hold a letter</b><span>Melt</span></li>
+        <li><b>Drag</b><span>Wipe the frost</span></li>
+      </ul>
+    </div>
+  </div>
+  <div id="tools-left">
+    <button id="help" title="How to play" aria-label="How to play">
+      <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="9" r="7.2"/>
+        <path d="M6.9 7.1a2.1 2.1 0 0 1 4.1.6c0 1.4-2 1.8-2 3"/>
+        <path d="M9 13.1h.01"/>
+      </svg>
+    </button>
+  </div>
+  <div id="tools">
+    <button id="kbd" title="Keyboard" aria-label="Keyboard">
+      <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round">
+        <rect x="1.5" y="4.5" width="15" height="9.5" rx="2"/>
+        <path d="M4.5 7.5h.01M7 7.5h.01M9.5 7.5h.01M12 7.5h.01M14 7.5h.01M5.5 10h.01M8 10h.01M10.5 10h.01M13 10h.01"/>
+        <path d="M6 12h6"/>
+      </svg>
+    </button>
+    <button id="png" title="Save image" aria-label="Save image">
+      <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">
+        <rect x="1.5" y="3.5" width="15" height="11" rx="2"/>
+        <path d="M1.5 12l4.2-4 3.3 3 2.2-2 5.3 4.5"/>
+        <circle cx="12.5" cy="7" r="1.2"/>
+      </svg>
+    </button>
+  </div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
