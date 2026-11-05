@@ -67,11 +67,10 @@ function canvas(w, h) {
 }
 
 const IS_MOBILE = matchMedia('(pointer: coarse)').matches;
-// Render resolution. This scene is heavy per pixel (clear ice refracts what is
-// behind it, and there is bloom on top), so high-density screens draw at 1.5x
-// rather than 2x or 3x: through the frost it looks the same, at about half the
-// pixels. If frames still can't keep up, it steps down further (see pacing()).
-let PR = Math.min(window.devicePixelRatio || 1, 1.5);
+// Render resolution: full detail (2x on a computer, 1.5x on a phone). The GPU
+// is spared by drawing fewer frames at rest instead (see pacing()); only if
+// full-rate frames still can't keep up does the resolution step down.
+let PR = Math.min(window.devicePixelRatio || 1, IS_MOBILE ? 1.5 : 2);
 
 // -----------------------------------------------------------------------------
 // Renderer, scene, camera
@@ -89,8 +88,7 @@ const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 10
 camera.position.set(0, 0, 8);
 
 const rt = new THREE.WebGLRenderTarget(innerWidth * PR, innerHeight * PR, {
-  // Multisampling only where pixels are coarse; dense screens don't need it
-  type: THREE.HalfFloatType, samples: !IS_MOBILE && PR < 1.5 ? 4 : 0,
+  type: THREE.HalfFloatType, samples: IS_MOBILE ? 0 : 4,
 });
 const composer = new EffectComposer(renderer, rt);
 composer.setPixelRatio(PR);
