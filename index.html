@@ -6,7 +6,7 @@
 <title>Iced Letters</title>
 <meta name="theme-color" content="#060c1c">
 <!-- The serif the Latin ice letters are cut from, for the opening hint's title -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/gilda-display@5.3.0/400.css" media="print" onload="this.media='all'"><!-- loads without holding up the first paint -->
+<link id="title-font" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/gilda-display@5.3.0/400.css" media="print" onload="this.media='all'"><!-- loads without holding up the first paint -->
 <style>
   html, body {
     margin: 0; height: 100%; overflow: hidden;
@@ -161,11 +161,23 @@
     </div>
   </div>
   <script>
-    // The tips card comes up at once, before the 3D scene has downloaded; it can
-    // already be closed (main.js takes over when it has loaded)
+    // The tips card comes up before the 3D scene has downloaded, as soon as the
+    // title's font is in (at most 3 s), so the title never shows in a stand-in
+    // font first. It can already be closed (main.js takes over once loaded).
     (() => {
       const hint = document.getElementById('hint'), ime = document.getElementById('ime');
-      requestAnimationFrame(() => { if (!hint.dataset.seen) hint.classList.add('show'); });
+      const title = hint.querySelector('h1'), css = document.getElementById('title-font');
+      const cssIn = new Promise(r => {
+        if (css.media === 'all') r();
+        else { css.addEventListener('load', r); css.addEventListener('error', r); }
+      });
+      const fontIn = cssIn.then(() => {
+        const cs = getComputedStyle(title);
+        return document.fonts.load(`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`, title.textContent);
+      }).catch(() => {});
+      // main.js waits for this too, so its setup work doesn't hold the card back
+      window.hintReady = Promise.race([fontIn, new Promise(r => setTimeout(r, 3000))]).then(() =>
+        new Promise(r => requestAnimationFrame(() => { if (!hint.dataset.seen) hint.classList.add('show'); r(); })));
       const close = () => {
         if (window.iceReady || hint.dataset.seen) return;
         hint.dataset.seen = '1';

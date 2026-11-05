@@ -22,9 +22,11 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import opentype from 'opentype';
 
-// Setting up the scene takes a moment. The tips card is already up (a small
-// script in index.html shows it at once); let the page paint before starting.
+// Setting up the scene takes a moment. Let the tips card come up first (a
+// small script in index.html shows it once its title font is in) and the page
+// paint, then start.
 const nextPaint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+await window.hintReady;
 await nextPaint();
 
 // -----------------------------------------------------------------------------
@@ -3226,28 +3228,25 @@ layout();
 // key; the help button (bottom left) brings it back, or closes it again
 const hintEl = document.getElementById('hint');
 if (hintEl) {
-  let shown = false, firstClose = true;
-  const showHint = () => { shown = true; hintEl.classList.add('show'); };
+  // index.html shows it when the page opens (once the title's font is in);
+  // it may already have been closed by the time this has loaded
+  let firstClose = !hintEl.dataset.seen;
+  const shown = () => hintEl.classList.contains('show');
+  const showHint = () => hintEl.classList.add('show');
   const hideHint = () => {
-    clearTimeout(openTimer);
-    if (!shown) return;
-    shown = false;
+    hintEl.dataset.seen = '1'; // also cancels the opening if it's still waiting for the font
+    if (!shown()) return;
     hintEl.classList.remove('show');
     // The first close starts the session: ready to type (and, on a phone,
     // the tap brings up the keyboard). Later closes leave the keyboard alone.
     if (firstClose) { firstClose = false; focusInput(); }
   };
-  // Already on screen since the page opened (a small script in index.html),
-  // or already closed by the time this has loaded
-  shown = hintEl.classList.contains('show');
-  if (hintEl.dataset.seen) firstClose = false;
   window.iceReady = true;
-  const openTimer = shown || hintEl.dataset.seen ? 0 : setTimeout(showHint, 500);
   hintEl.addEventListener('pointerdown', e => { e.preventDefault(); hideHint(); });
-  addEventListener('keydown', () => { if (shown) hideHint(); else clearTimeout(openTimer); });
+  addEventListener('keydown', hideHint);
   const helpBtn = document.getElementById('help');
   helpBtn.addEventListener('pointerdown', e => e.preventDefault()); // keep the input's focus as it is
-  helpBtn.addEventListener('click', () => { if (shown) hideHint(); else { firstClose = false; showHint(); } });
+  helpBtn.addEventListener('click', () => { if (shown()) hideHint(); else { firstClose = false; showHint(); } });
 }
 loadSlices(FONTS.cjk); loadSlices(FONTS.latin); // warm up the font indexes
 if (!IS_MOBILE) focusInput();
