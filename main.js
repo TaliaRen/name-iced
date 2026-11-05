@@ -67,7 +67,11 @@ function canvas(w, h) {
 }
 
 const IS_MOBILE = matchMedia('(pointer: coarse)').matches;
-const PR = Math.min(window.devicePixelRatio || 1, IS_MOBILE ? 1.5 : 2);
+// Render resolution. This scene is heavy per pixel (clear ice refracts what is
+// behind it, and there is bloom on top), so high-density screens draw at 1.5x
+// rather than 2x or 3x: through the frost it looks the same, at about half the
+// pixels. If frames still can't keep up, it steps down further (see pacing()).
+let PR = Math.min(window.devicePixelRatio || 1, 1.5);
 
 // -----------------------------------------------------------------------------
 // Renderer, scene, camera
@@ -85,7 +89,8 @@ const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 10
 camera.position.set(0, 0, 8);
 
 const rt = new THREE.WebGLRenderTarget(innerWidth * PR, innerHeight * PR, {
-  type: THREE.HalfFloatType, samples: IS_MOBILE ? 0 : 4,
+  // Multisampling only where pixels are coarse; dense screens don't need it
+  type: THREE.HalfFloatType, samples: !IS_MOBILE && PR < 1.5 ? 4 : 0,
 });
 const composer = new EffectComposer(renderer, rt);
 composer.setPixelRatio(PR);
@@ -2145,7 +2150,7 @@ const pwGeo = new THREE.BufferGeometry();
 pwGeo.setAttribute('position', new THREE.BufferAttribute(pwPos, 3).setUsage(THREE.DynamicDrawUsage));
 pwGeo.setAttribute('aAlpha', new THREE.BufferAttribute(pwAlpha, 1).setUsage(THREE.DynamicDrawUsage));
 pwGeo.setAttribute('aSize', new THREE.BufferAttribute(pwSize, 1).setUsage(THREE.DynamicDrawUsage));
-const powderPoints = new THREE.Points(pwGeo, new THREE.ShaderMaterial({
+const powderMat = new THREE.ShaderMaterial({
   uniforms: { uPR: { value: PR } },
   vertexShader: `attribute float aAlpha; attribute float aSize; varying float vA; uniform float uPR;
     void main(){ vA = aAlpha; gl_PointSize = aSize * uPR; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
@@ -2153,7 +2158,8 @@ const powderPoints = new THREE.Points(pwGeo, new THREE.ShaderMaterial({
     void main(){ float r = length(gl_PointCoord - 0.5) * 2.0; float a = pow(max(0.0, 1.0 - r), 1.6);
       gl_FragColor = vec4(vec3(0.86, 0.92, 1.0), a * vA); }`,
   transparent: true, depthWrite: false,
-}));
+});
+const powderPoints = new THREE.Points(pwGeo, powderMat);
 powderPoints.frustumCulled = false;
 powderPoints.renderOrder = 90;
 scene.add(powderPoints);
@@ -3149,8 +3155,55 @@ function updateParticles(t, dt) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Frame pacing. Drawing this scene flat out keeps the GPU busy and a phone
+// warm, so it only runs at full rate while something is happening (typing,
+// touching, freezing, melting, shattering, wiping). At rest, with letters
+// on the glass, 30 frames a second is plenty for the gentle sway and the
+// glitter; an empty window needs even less. And if full-rate frames keep
+// coming late, the resolution steps down a notch.
+// -----------------------------------------------------------------------------
+let lastPoke = 0, pointersDown = 0, lastRender = 0;
+const poke = () => { lastPoke = now(); };
+for (const ev of ['keydown', 'input', 'pointermove', 'wheel']) addEventListener(ev, poke, true);
+addEventListener('pointerdown', () => { pointersDown++; poke(); }, true);
+for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { pointersDown = Math.max(0, pointersDown - 1); poke(); }, true);
+function isBusy(t) {
+  return t - lastPoke < 2 || pointersDown > 0 || pending.length > 0 || dying.length > 0
+    || shardPool.items.length > 0 || dropPool.items.length > 0 || powder.length > 0 || bursts.length > 0 || fallers.length > 0
+    || wipe.active > 0 || active.some(c => c.state !== 'ice' && c.state !== 'empty');
+}
+function setPixelRatio(p) {
+  PR = p;
+  renderer.setPixelRatio(p);
+  composer.setPixelRatio(p);
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  dropMat.uniforms.uRes.value.set(innerWidth * p, innerHeight * p);
+  gMat.uniforms.uPR.value = p;
+  powderMat.uniforms.uPR.value = p;
+}
+const slow = { n: 0, late: 0, since: 0 };
+function pacing(t, busy) {
+  // Only judge frames drawn at full rate, in a visible tab
+  if (!busy || document.hidden) { slow.n = slow.late = 0; slow.since = t; return; }
+  const gap = t - lastRender;
+  if (gap > 0.25) return; // a pause, not a slow frame
+  slow.n++;
+  if (gap > 0.026) slow.late++; // under ~40 frames a second
+  if (t - slow.since > 2.5) {
+    if (slow.n > 20 && slow.late > slow.n * 0.6 && PR > 1) setPixelRatio(Math.max(1, PR - 0.25));
+    slow.n = slow.late = 0; slow.since = t;
+  }
+}
+
 function frame() {
-  const t = now(), dt = Math.min(0.05, t - lastT);
+  const t0 = now(), busy = isBusy(t0);
+  const minGap = busy ? 0 : active.length ? 1 / 30 : 1 / 20;
+  if (t0 - lastRender < minGap - 0.004) { requestAnimationFrame(frame); return; }
+  pacing(t0, busy);
+  lastRender = t0;
+  const t = t0, dt = Math.min(0.05, t - lastT);
   lastT = t;
 
   const kk = Math.min(1, dt * 3);
