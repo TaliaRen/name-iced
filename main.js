@@ -250,7 +250,7 @@ function bareTree(g, R, x, y, ang, len, w, d) {
 }
 
 // The world outside, as if seen through fogged glass
-function paintOutside(w, h, R, detail) {
+function paintOutside(w, h, R) {
   const c = canvas(w, h), g = c.getContext('2d');
   let gr = g.createLinearGradient(0, 0, 0, h);
   gr.addColorStop(0, '#1a2338');
@@ -275,42 +275,17 @@ function paintOutside(w, h, R, detail) {
 
   // A snow-roofed house with one warm lit window
   // Near the middle, so a narrow phone screen shows it clear of the edge frost
-  // Sized from the narrower side, so it keeps its shape on a tall phone screen
-  // as well as on a wide one
-  const hw = Math.min(w * 0.26, h * 0.42), hh = hw * 0.48, rise = hw * 0.26, eave = hw * 0.024;
-  const hx = w * 0.57, hy = ground - hh * 0.8;
-  // Seen through wiped glass the house needs to read: a lighter wall catching
-  // the snow light, a chimney, a door and a framed window (no random draws
-  // here, so the frosted and the wiped painting stay in step)
-  if (detail) {
-    g.fillStyle = '#34405e';                       // chimney (the roof covers its foot)
-    g.fillRect(hx + hw * 0.24, hy - rise * 1.25, hw * 0.08, rise);
-    g.fillStyle = '#c9d4e6';                       // snow on top of it
-    g.fillRect(hx + hw * 0.235, hy - rise * 1.28, hw * 0.09, rise * 0.1);
-  }
-  if (detail) {
-    gr = g.createLinearGradient(0, hy, 0, hy + hh);
-    gr.addColorStop(0, '#46557a'); gr.addColorStop(1, '#3a4868');
-    g.fillStyle = gr;
-  } else g.fillStyle = '#323f5c';
+  const hx = w * 0.57, hw = w * 0.26, hy = ground - h * 0.16, hh = h * 0.2;
+  g.fillStyle = '#323f5c';
   g.fillRect(hx - hw / 2, hy, hw, hh);
   g.fillStyle = '#c9d4e6'; // snow on the roof
   g.beginPath();
-  g.moveTo(hx - hw * 0.6, hy + eave);
-  g.lineTo(hx - hw * 0.1, hy - rise);
-  g.lineTo(hx + hw * 0.6, hy - rise);
-  g.lineTo(hx + hw * 0.62, hy + eave);
+  g.moveTo(hx - hw * 0.6, hy + h * 0.01);
+  g.lineTo(hx - hw * 0.1, hy - h * 0.11);
+  g.lineTo(hx + hw * 0.6, hy - h * 0.11);
+  g.lineTo(hx + hw * 0.62, hy + h * 0.01);
   g.closePath(); g.fill();
-  if (detail) {
-    g.fillStyle = '#2a3550';                       // eaves shadow under the roof
-    g.fillRect(hx - hw / 2, hy + eave, hw, hh * 0.06);
-    g.fillStyle = '#25304a';                       // door
-    g.fillRect(hx - hw * 0.34, hy + hh * 0.4, hw * 0.12, hh * 0.6);
-    g.fillStyle = 'rgba(255,190,110,0.5)';         // light under the door
-    g.fillRect(hx - hw * 0.34, hy + hh * 0.97, hw * 0.12, hh * 0.03);
-  }
   const lamps = [[hx, hy + hh * 0.42]];
-  c.lamp = [hx / w, (hy + hh * 0.42) / h]; // where its window is, for the glow on the glass
   for (const [lx, ly] of lamps) {
     // A wider, warmer glow so the windows still read once heavily blurred
     gr = g.createRadialGradient(lx, ly, 0, lx, ly, hw * 0.34);
@@ -320,14 +295,6 @@ function paintOutside(w, h, R, detail) {
     g.fillStyle = gr; g.fillRect(lx - hw * 0.34, ly - hw * 0.34, hw * 0.68, hw * 0.68);
     g.fillStyle = '#ffd394';
     g.fillRect(lx - hw * 0.045, ly - hh * 0.11, hw * 0.09, hh * 0.22);
-    if (detail) {                                  // window frame and cross bars
-      g.strokeStyle = '#2a3550'; g.lineWidth = Math.max(1, hw * 0.012);
-      g.strokeRect(lx - hw * 0.045, ly - hh * 0.11, hw * 0.09, hh * 0.22);
-      g.beginPath();
-      g.moveTo(lx, ly - hh * 0.11); g.lineTo(lx, ly + hh * 0.11);
-      g.moveTo(lx - hw * 0.045, ly); g.lineTo(lx + hw * 0.045, ly);
-      g.stroke();
-    }
   }
 
   // Snowy ground
@@ -450,12 +417,11 @@ function paintWindow(aspect, frosted) {
   let gr, gr0;
 
   // 1. Outside, deeply out of focus
-  const outside = paintOutside(Math.round(w * 0.5), Math.round(h * 0.5), R, !frosted);
-  // Wiped glass: the scene outside comes into focus (only a touch soft, it's
-  // far away at night), and much less washed out
-  g.drawImage(frosted ? soften(soften(outside, 0.07), 0.6) : soften(outside, 0.6), 0, 0, w, h);
+  const outside = paintOutside(Math.round(w * 0.5), Math.round(h * 0.5), R);
+  // Wiped glass: the scene is a little sharper and less washed out
+  g.drawImage(soften(soften(outside, frosted ? 0.07 : 0.12), 0.6), 0, 0, w, h);
   // Breath-fog on the glass washes the scene out
-  g.fillStyle = frosted ? 'rgba(80,96,130,0.32)' : 'rgba(80,96,130,0.08)'; // wiped glass keeps a little haze
+  g.fillStyle = frosted ? 'rgba(80,96,130,0.32)' : 'rgba(80,96,130,0.24)'; // wiped glass keeps a little haze
   g.fillRect(0, 0, w, h);
 
   // 2. Fog on the glass: uneven, slightly grainy haze
@@ -499,7 +465,7 @@ function paintWindow(aspect, frosted) {
 
   // Dusk: pull everything down a little, then a vignette
   g.globalCompositeOperation = 'multiply';
-  g.fillStyle = frosted ? '#56628a' : '#7482ac'; // the clear glass lets more of the snow light through
+  g.fillStyle = '#56628a';
   g.fillRect(0, 0, w, h);
   // Lift the frost itself back up a little, so it stays pale against the dusk
   if (frosted) {
@@ -516,8 +482,8 @@ function paintWindow(aspect, frosted) {
 
   // The house window's warm light, carried through the fog
   g.globalCompositeOperation = 'screen';
-  {
-    const lx = w * outside.lamp[0], ly = h * outside.lamp[1], r = Math.min(w, h) * 0.1;
+  for (const fx of [0.57]) {
+    const lx = w * fx, ly = h * 0.584, r = Math.min(w, h) * 0.1;
     gr0 = g.createRadialGradient(lx, ly, 0, lx, ly, r);
     gr0.addColorStop(0, 'rgba(255,190,120,0.26)');
     gr0.addColorStop(0.4, 'rgba(240,160,100,0.08)');
