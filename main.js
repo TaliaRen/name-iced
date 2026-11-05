@@ -22,6 +22,11 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import opentype from 'opentype';
 
+// Setting up the scene takes a moment. The tips card is already up (a small
+// script in index.html shows it at once); let the page paint before starting.
+const nextPaint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+await nextPaint();
+
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
@@ -160,7 +165,8 @@ function buildEnvironment() {
   pm.dispose();
   return tex;
 }
-scene.environment = buildEnvironment();
+// The environment (reflections on the ice) is built just after the first
+// frame: nothing on screen needs it before a letter is typed
 
 // Warm light grazing the ice from the side, behind: edges glow amber
 const warmLight = new THREE.PointLight(0xffa760, 7, 0, 2);
@@ -446,7 +452,9 @@ function paintWindow(aspect, frosted) {
 
   // 3. Frost ferns on the glass, crisp (they are on the glass, in focus-ish)
   // Twice: blurred for the soft white mass of the frost, then sharp for its crystals
-  const frost = paintFrost(w, h, R); // always painted, so the random sequence stays in step
+  // Only the frosted pane needs it (nothing after this draws from R, so
+  // skipping it on the clear pane changes nothing else)
+  const frost = frosted ? paintFrost(w, h, R) : null;
   if (frosted) {
     g.globalAlpha = 0.9;
     g.drawImage(soften(soften(frost, 0.22), 0.6), 0, 0, w, h);
@@ -2069,6 +2077,7 @@ function makePool(geo, mat, max) {
   const mesh = new THREE.InstancedMesh(geo, mat, max);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.count = 0;
+  mesh.visible = false; // hidden while empty (see updateParticles)
   mesh.frustumCulled = false;
   scene.add(mesh);
   return { mesh, items: [], max };
@@ -3012,6 +3021,7 @@ function updateParticles(t, dt) {
     pushGlint(s.p, glintAt(s.p, _n, t, s.life * 10) * k * 0.5, 8 + s.s.x * 110);
   }
   sp.mesh.count = n;
+  sp.mesh.visible = n > 0;
   sp.mesh.instanceMatrix.needsUpdate = true;
 
   // Water drops: swell while hanging, then fall
@@ -3036,6 +3046,7 @@ function updateParticles(t, dt) {
     dp.mesh.setMatrixAt(n++, _o.matrix);
   }
   dp.mesh.count = n;
+  dp.mesh.visible = n > 0;
   dp.mesh.instanceMatrix.needsUpdate = true;
 
   // Sparkling motes from shattering
@@ -3149,6 +3160,52 @@ function frame() {
 }
 
 // -----------------------------------------------------------------------------
+// Shader warm-up. The ice, flowers, leaves, shards and drops use heavy shaders
+// that take a few seconds to compile the first time. Compile them all in the
+// background (in parallel where the browser can), so the first letter typed
+// doesn't freeze the page. The materials are kept, so the programs stay cached.
+// -----------------------------------------------------------------------------
+const warm = new THREE.Group();
+function warmShaders() {
+  const geo = new THREE.BoxGeometry(0.01, 0.01, 0.01);
+  const clipU = {
+    uGlyphInv: { value: new THREE.Matrix4() }, uMelt: { value: 0 }, uSeed: { value: 0 }, uBox: { value: new THREE.Vector4() },
+  };
+  const box = { min: new THREE.Vector2(0, 0), max: new THREE.Vector2(1, 1) };
+  const flower = (key, root) => meltWithGlyph(new THREE.MeshPhysicalMaterial({
+    color: 0xeaf5ff, map: VEIN_TEX[0], roughness: 0.14, transmission: 0.82, thickness: 0.04, ior: 1.31,
+    emissive: 0xffffff, emissiveMap: rootGlowTex, emissiveIntensity: 0.9, envMapIntensity: 2.2, side: THREE.DoubleSide,
+  }), clipU, key, { root });
+  const makers = [
+    () => makeGlyphMaterial({ box, sdf: flawTex.rough, sdfBox: box }),
+    () => flower('classic', null), () => flower('classic', [1, 1, 1]), () => flower('petal', [1, 1, 1]),
+    () => meltWithGlyph(new THREE.MeshBasicMaterial(), clipU, 'basic'),
+    () => meltWithGlyph(flakeMat.clone(), clipU, 'flake'),
+    () => meltWithGlyph(leafMat.clone(), clipU, 'leaf'),
+    () => meltWithGlyph(icicleMat.clone(), clipU, 'icicle'),
+    () => meltWithGlyph(twigMat.clone(), clipU, 'twig'),
+    () => meltWithGlyph(featherMat.clone(), clipU, 'feather'),
+  ];
+  for (const make of makers) {
+    const m = make();
+    warm.add(new THREE.Mesh(geo, m));
+    // A clear double-sided piece is also drawn back face first, as its own shader
+    if (m.side === THREE.DoubleSide && m.transmission > 0) {
+      const back = make();
+      back.side = THREE.BackSide;
+      warm.add(new THREE.Mesh(geo, back));
+    }
+  }
+  for (const p of [shardPool, dropPool]) warm.add(new THREE.InstancedMesh(p.mesh.geometry, p.mesh.material, 1));
+  // Compile for the same target the scene is drawn into (the composer's buffer)
+  const prev = renderer.getRenderTarget();
+  renderer.setRenderTarget(composer.readBuffer);
+  const done = renderer.compileAsync(warm, camera, scene).catch(() => {});
+  renderer.setRenderTarget(prev);
+  return done;
+}
+
+// -----------------------------------------------------------------------------
 // Resize & boot
 // -----------------------------------------------------------------------------
 let resizeTimer = 0;
@@ -3180,7 +3237,12 @@ if (hintEl) {
     // the tap brings up the keyboard). Later closes leave the keyboard alone.
     if (firstClose) { firstClose = false; focusInput(); }
   };
-  const openTimer = setTimeout(showHint, 500);
+  // Already on screen since the page opened (a small script in index.html),
+  // or already closed by the time this has loaded
+  shown = hintEl.classList.contains('show');
+  if (hintEl.dataset.seen) firstClose = false;
+  window.iceReady = true;
+  const openTimer = shown || hintEl.dataset.seen ? 0 : setTimeout(showHint, 500);
   hintEl.addEventListener('pointerdown', e => { e.preventDefault(); hideHint(); });
   addEventListener('keydown', () => { if (shown) hideHint(); else clearTimeout(openTimer); });
   const helpBtn = document.getElementById('help');
@@ -3190,3 +3252,9 @@ if (hintEl) {
 loadSlices(FONTS.cjk); loadSlices(FONTS.latin); // warm up the font indexes
 if (!IS_MOBILE) focusInput();
 requestAnimationFrame(frame);
+// Right after the first frame: the reflections, then the ice shaders, while
+// the tips card is still up
+setTimeout(() => {
+  scene.environment = buildEnvironment();
+  warmShaders();
+}, 120);

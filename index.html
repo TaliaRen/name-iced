@@ -6,7 +6,7 @@
 <title>Iced Letters</title>
 <meta name="theme-color" content="#060c1c">
 <!-- The serif the Latin ice letters are cut from, for the opening hint's title -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/gilda-display@5.3.0/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/gilda-display@5.3.0/400.css" media="print" onload="this.media='all'"><!-- loads without holding up the first paint -->
 <style>
   html, body {
     margin: 0; height: 100%; overflow: hidden;
@@ -116,15 +116,32 @@
   }
 
 </style>
+<!-- Minified builds, and every module fetched at once instead of one level
+     of imports at a time -->
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
     "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-    "opentype": "https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.module.js"
+    "opentype": "https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.module.min.js"
   }
 }
 </script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="modulepreload" href="main.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.module.min.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/EffectComposer.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/RenderPass.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/UnrealBloomPass.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/OutputPass.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/ShaderPass.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/Pass.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/MaskPass.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/shaders/CopyShader.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/shaders/LuminosityHighPassShader.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/shaders/OutputShader.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/utils/BufferGeometryUtils.js">
 </head>
 <body>
   <canvas id="gl"></canvas>
@@ -143,6 +160,22 @@
       </ul>
     </div>
   </div>
+  <script>
+    // The tips card comes up at once, before the 3D scene has downloaded; it can
+    // already be closed (main.js takes over when it has loaded)
+    (() => {
+      const hint = document.getElementById('hint'), ime = document.getElementById('ime');
+      requestAnimationFrame(() => { if (!hint.dataset.seen) hint.classList.add('show'); });
+      const close = () => {
+        if (window.iceReady || hint.dataset.seen) return;
+        hint.dataset.seen = '1';
+        hint.classList.remove('show');
+        ime.focus({ preventScroll: true });
+      };
+      hint.addEventListener('pointerdown', e => { if (!window.iceReady) { e.preventDefault(); close(); } });
+      addEventListener('keydown', close);
+    })();
+  </script>
   <div id="tools-left">
     <button id="help" title="How to play" aria-label="How to play">
       <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
